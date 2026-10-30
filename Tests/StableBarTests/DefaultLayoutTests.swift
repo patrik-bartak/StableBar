@@ -176,6 +176,29 @@ private enum FrontmostApp {
     }
 }
 
+@Test(arguments: ["horizontal", "vertical", "default"]) @MainActor
+func listOrientationDrawsEntriesInSourceOrder(orientation: String) throws {
+    let direction = orientation == "default" ? "" : #","orientation":"\#(orientation)""#
+    let list = try decode(PopupBlock.self, #"""
+    {"type":"list","source":"apps"\#(direction),"style":{"spacing":9},
+     "row":{"type":"row","style":{"spacing":4,"width":60},"children":[
+       {"type":"symbol","source":"icon"},{"type":"field","field":"badge"}]}}
+    """#)
+    let type = orientation == "horizontal" ? "row" : "column"
+    let explicit = try decode(PopupBlock.self, #"""
+    {"type":"\#(type)","style":{"spacing":9},"children":[
+      {"type":"row","style":{"spacing":4,"width":60},"children":[
+        {"type":"symbol","name":"envelope"},{"type":"field","field":"mail"}]},
+      {"type":"row","style":{"spacing":4,"width":60},"children":[
+        {"type":"symbol","name":"checkmark"},{"type":"field","field":"todo"}]}]}
+    """#)
+    let context = BlockContext(lists: ["apps": [["icon": "envelope", "badge": "42"], ["icon": "checkmark", "badge": "3"]]],
+                               fillsWidth: false, open: { _ in }, runAction: { _, _ in })
+    let actual = try draw(PopupBlockView(block: list, inheritedStyle: WidgetStyle(), fields: [:], context: context))
+    let expected = try draw(PopupBlockView(block: explicit, inheritedStyle: WidgetStyle(), fields: ["mail": "42", "todo": "3"], context: context))
+    #expect(actual.difference(from: expected) <= tolerance)
+}
+
 @Test @MainActor func scrollingTextTakesItsOwnWidthUpToMaxWidth() throws {
     let context = BlockContext(fillsWidth: false, open: { _ in }, runAction: { _, _ in })
     func drawing(_ text: String, style: String, scrolls: Bool = true) throws -> Drawing {
