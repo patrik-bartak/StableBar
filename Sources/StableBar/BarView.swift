@@ -747,7 +747,7 @@ struct WorkspaceView: View {
                     .accessibilityLabel("Workspace \(workspace.label)\(workspace.isFocused ? ", focused" : workspace.isVisible ? ", visible" : "")")
                     .accessibilityAddTraits(workspace.isFocused ? .isSelected : [])
                     if configuration?.showApps != false {
-                        if configuration?.windows == true {
+                        if configuration?.windows ?? workspace.hasTreeOrder {
                             ForEach(workspace.windows) { window in
                                 windowButton(windows: [window], below: zoomedBelow, action: { workspaceStore.focus(window) }) {
                                     HStack(spacing: style.spacing ?? 4) {
