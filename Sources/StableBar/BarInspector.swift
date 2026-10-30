@@ -432,9 +432,10 @@ struct BarInspector: View {
                 }
                 iconGroup(widget)
             case .workspaces:
+                let showWindows = widget.workspace?.windows ?? store.workspaceStore.workspaces.contains(where: \.hasTreeOrder)
                 SettingsGroup("Workspaces") {
                     SettingRow(title: "Show each window") {
-                        Toggle("Show each window", isOn: Binding(get: { widget.workspace?.windows == true }, set: {
+                        Toggle("Show each window", isOn: Binding(get: { showWindows }, set: {
                             editor.set(["workspace": .object(["windows": .bool($0)])], for: widget.id)
                         }).animation(.snappy(duration: 0.2)))
                         .toggleStyle(.switch).labelsHidden().controlSize(.small)
@@ -455,7 +456,7 @@ struct BarInspector: View {
                             }
                         }
                     }
-                    if widget.workspace?.windows == true {
+                    if showWindows {
                         let length = Binding(get: { Double(widget.workspace?.titleLength ?? 0) }, set: {
                             editor.set(["workspace": .object(["titleLength": .number($0)])], for: widget.id)
                         })
