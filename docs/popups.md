@@ -50,7 +50,7 @@ Layout blocks:
 | `text` | `text` | Static text |
 | `field` | `field` | A string from the script's `fields` object, or the current list row. With `"wrap": true` it shows all of the text over as many lines as it needs, and the text can be selected and copied; `maxHeight` scrolls a wrapping field past that height in points and keeps its newest lines in view as the text grows. `"markdown": true` shows inline Markdown: bold, italics, `code` and links. |
 | `graph` | `height` | The widget's existing 60 samples on the 0–1 scale, the newest at the right edge; optional `source` reads `series[source]` instead and `lineWidth` sets stroke width |
-| `list` | `source`, `row` | Repeat the `row` block for each object in `lists[source]` |
+| `list` | `source`, `row` | Repeat the `row` block for each object in `lists[source]`, in source order. `orientation` is `vertical` by default; use `horizontal` for entries side by side. `style.spacing` sets the gap between entries. |
 | `button` | `title`, `onClick` | Run a command and close the popup |
 | `slider` | `title`, `source`, `onChange` | Native slider; reads `values[source]` or numeric `fields[source]`. `min`, `max`, `step` default to 0, 1, 0.01. |
 | `toggle` | `title`, `source`, `onChange` | Native toggle; true for `"true"`/`"1"` in fields or 1 in values. |

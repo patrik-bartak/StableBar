@@ -1,0 +1,26 @@
+{
+  "widgets": [
+    {
+      "id": "app-counts",
+      "type": "script",
+      "position": "right",
+      "command": "cat \"$CONFIG_DIR/sample.json\"",
+      "interval": null,
+      "layout": {
+        "type": "list",
+        "source": "apps",
+        "orientation": "horizontal",
+        "style": { "spacing": 12 },
+        "row": {
+          "type": "row",
+          "openField": "bundle",
+          "style": { "spacing": 4 },
+          "children": [
+            { "type": "image", "source": "icon", "style": { "width": 16, "height": 16 } },
+            { "type": "field", "field": "badge" }
+          ]
+        }
+      }
+    }
+  ]
+}

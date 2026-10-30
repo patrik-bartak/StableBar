@@ -981,6 +981,14 @@
         "row": {
           "$ref": "#/definitions/block"
         },
+        "orientation": {
+          "anyOf": [
+            {"enum": ["horizontal", "vertical"]},
+            {"$ref": "#/definitions/reference"},
+            {"type": "null"}
+          ],
+          "description": "The direction of a list's entries; vertical by default."
+        },
         "title": {
           "$ref": "#/definitions/string"
         },
