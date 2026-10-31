@@ -158,6 +158,24 @@
       "type": "string",
       "enum": ["aerospace", "yabai", "omniwm", "spaces"]
     },
+    "workspaceNames": {
+      "description": "Workspace names by source and workspace ID. Named cells show ID: Name. Null clears an inherited name.",
+      "type": ["object", "null"],
+      "propertyNames": {
+        "enum": ["aerospace", "yabai", "omniwm", "spaces"]
+      },
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "propertyNames": { "pattern": "\\S" },
+        "additionalProperties": {
+          "anyOf": [
+            { "type": "string", "pattern": "\\S" },
+            { "$ref": "#/definitions/reference" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
     "modeAliases": {
       "anyOf": [
         {

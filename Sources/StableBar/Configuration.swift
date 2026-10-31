@@ -620,6 +620,7 @@ struct ScreenConfiguration: Decodable, Sendable {
 
 struct Configuration: Decodable, Sendable {
     let workspaceSource: WorkspaceSource
+    let workspaceNames: [String: [String: String]]
     let modeAliases: [String: String]
     let bar: BarSettings
     let defaults: WidgetStyle
@@ -641,7 +642,7 @@ struct Configuration: Decodable, Sendable {
     /// source sends, a provider of that source, unless a provider of another type has its name.
     let activeProviders: Set<String>
 
-    enum CodingKeys: String, CodingKey, CaseIterable { case workspaceSource, modeAliases, bar, defaults, popupDefaults, roles, workspaceDefaults, widgets, screens, popups, templates, widgetOverrides, environment, providers, groups }
+    enum CodingKeys: String, CodingKey, CaseIterable { case workspaceSource, workspaceNames, modeAliases, bar, defaults, popupDefaults, roles, workspaceDefaults, widgets, screens, popups, templates, widgetOverrides, environment, providers, groups }
 
     init(from decoder: Decoder) throws {
         try decoder.rejectUnknownKeys(CodingKeys.self, allowing: ["$schema", "tokens", "packages", "packageSources", "theme"])
@@ -649,6 +650,16 @@ struct Configuration: Decodable, Sendable {
         _ = try decoder.container(keyedBy: ConfigurationKey.self)
             .decodeIfPresent([PackageSource].self, forKey: ConfigurationKey(stringValue: "packageSources"))
         workspaceSource = try values.decodeIfPresent(WorkspaceSource.self, forKey: .workspaceSource) ?? .aerospace
+        let names = try values.decodeIfPresent([String: [String: String?]?].self, forKey: .workspaceNames) ?? [:]
+        workspaceNames = names.compactMapValues { $0?.compactMapValues { $0 } }
+        guard names.keys.allSatisfy({ WorkspaceSource(rawValue: $0) != nil }),
+              names.values.allSatisfy({ ($0 ?? [:]).allSatisfy {
+                  !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                      && $0.value.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } != false
+              } }) else {
+            throw DecodingError.dataCorruptedError(forKey: .workspaceNames, in: values,
+                debugDescription: "Map aerospace, yabai, omniwm or spaces to nonempty workspace IDs and names. Use null to clear a name.")
+        }
         modeAliases = try values.decodeIfPresent([String: String?].self, forKey: .modeAliases)?.compactMapValues { $0 } ?? [:]
         guard modeAliases.allSatisfy({ !$0.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && $0.value.range(of: "^[A-Za-z][A-Za-z0-9_-]*$", options: .regularExpression) != nil }) else {

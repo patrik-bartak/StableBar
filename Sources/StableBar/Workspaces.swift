@@ -15,6 +15,10 @@ struct Workspace: Decodable, Identifiable, Sendable, Equatable {
     var id: String { name }
     var label: String { displayName ?? name }
 
+    func label(alias: String?) -> String {
+        alias.map { "\(name): \($0)" } ?? label
+    }
+
     enum CodingKeys: String, CodingKey {
         case name = "workspace"
         case isFocused = "workspace-is-focused"

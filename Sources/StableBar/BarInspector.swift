@@ -434,6 +434,7 @@ struct BarInspector: View {
             case .workspaces:
                 let showWindows = widget.workspace?.windows ?? store.workspaceStore.workspaces.contains(where: \.hasTreeOrder)
                 SettingsGroup("Workspaces") {
+                    WorkspaceNamesSettings(editor: editor)
                     SettingRow(title: "Show each window") {
                         Toggle("Show each window", isOn: Binding(get: { showWindows }, set: {
                             editor.set(["workspace": .object(["windows": .bool($0)])], for: widget.id)

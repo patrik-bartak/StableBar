@@ -221,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let store: BarStore
     private let setup = SetupWindow()
     private let customization = CustomizationWindow()
+    private let workspaceNaming = WorkspaceNamingWindow()
     private let themeTrial = ThemeTrialPanel()
     private let editingControls = BarEditControls()
     private let editingKeyboard = BarEditingKeyboard()
@@ -250,6 +251,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
         store.onConfigurationChange = { [weak self] in self?.updatePanels() }
         store.onCustomize = { [weak self] in self?.showCustomization() }
+        store.onNameWorkspace = { [weak self, weak store] id, source in
+            guard let store else { return }
+            self?.workspaceNaming.show(store: store, id: id, source: source)
+        }
         store.onShowCrashes = { [weak self] in self?.showCrashes() }
         store.onCustomizePackages = { [weak self] in
             guard let self else { return }

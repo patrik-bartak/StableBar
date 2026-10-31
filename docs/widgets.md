@@ -131,6 +131,31 @@ Clicking a desktop posts its **Switch to Desktop N** shortcut. Turn those shortc
 
 macOS has no public API that lists Spaces or their windows, so this source uses private window-server functions. A macOS update can break it; AeroSpace, yabai and OmniWM don't depend on them.
 
+## Workspace names
+
+Right-click a workspace and choose **Name workspace…**, or use **Settings → General → Workspaces** or the workspace widget's **Content** settings. The dialog starts with its current custom name. Save a name to show a label such as **3: Research** beside the app icons; leave it empty to clear it. Names save immediately and support Undo in Settings.
+
+Names belong to StableBar and keep the workspace's original ID for shortcuts, sorting, switching and window dragging. Each workspace manager has its own names:
+
+```json
+{
+  "workspaceNames": {
+    "aerospace": { "1": "Code", "3": "Research" },
+    "spaces": { "1": "Personal" }
+  }
+}
+```
+
+Includes and profiles merge these maps by source and workspace ID. Use `null` in an overriding layer to clear an inherited name. In **Profiles → Edit bar**, the widget's Content settings save names in that profile. Names apply to every workspace widget and display using that configuration. Themes and widget packages cannot define them. Without a custom name, the label stays as the workspace manager supplies it, including OmniWM's display names. macOS Spaces and yabai use desktop numbers as IDs, so names follow those numbers when desktops are reordered.
+
+`StableBar --name-workspace` opens the dialog for the focused workspace. To assign a keyboard shortcut in AeroSpace, add this to `[mode.main.binding]` in `aerospace.toml`:
+
+```toml
+ctrl-alt-n = 'exec-and-forget /Applications/StableBar.app/Contents/MacOS/StableBar --name-workspace'
+```
+
+Add `--config PATH` before `--name-workspace` for a different configuration. You can also [set names directly from the command line](command-line.md).
+
 ## Workspace appearance
 
 A `workspaces` widget (also accepted as `aerospace`) accepts `workspace` with:
