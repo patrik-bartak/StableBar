@@ -152,10 +152,14 @@ struct BarView: View {
     @ViewBuilder
     private func unitView(_ unit: BarUnit, config: Configuration, width: CGFloat) -> some View {
         if width < restingWidths[unit.id, default: 0] - 0.5 {
-            ScrollView(.horizontal) {
-                BarUnitView(unit: unit, config: config, store: store, display: display.id).fixedSize()
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    BarUnitView(unit: unit, config: config, store: store, display: display.id)
+                        .fixedSize()
+                        .environment(\.workspaceScrollProxy, proxy)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         } else {
             BarUnitView(unit: unit, config: config, store: store, display: display.id)
         }
@@ -706,6 +710,22 @@ struct Sparkline: Shape {
     }
 }
 
+private struct WorkspaceScrollProxyKey: EnvironmentKey {
+    static var defaultValue: ScrollViewProxy? { nil }
+}
+
+extension EnvironmentValues {
+    fileprivate var workspaceScrollProxy: ScrollViewProxy? {
+        get { self[WorkspaceScrollProxyKey.self] }
+        set { self[WorkspaceScrollProxyKey.self] = newValue }
+    }
+}
+
+private struct WorkspaceScrollID: Hashable {
+    let widget: String
+    let workspace: String
+}
+
 struct WorkspaceView: View {
     let workspaceStore: WorkspaceStore
     let monitor: Int
@@ -723,6 +743,7 @@ struct WorkspaceView: View {
     @Environment(\.measuringBarWidths) private var measuring
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.workspaceScrollProxy) private var scrollProxy
     @Namespace private var selection
     @State private var hoveredWorkspace: String?
     @State private var appIcons = WorkspaceAppIcons()
@@ -838,6 +859,7 @@ struct WorkspaceView: View {
                         style: styles.underline, color: styles.underline.background?.firstColor.color ?? appearance.accent,
                         animation: animation)])
                 }
+                .id(WorkspaceScrollID(widget: widgetID, workspace: workspace.name))
                 .onHover { hoveredWorkspace = $0 ? workspace.name : nil }
                 .contextMenu {
                     if !measuring, allowsWindowDragging, let store = contextMenuStore {
@@ -855,6 +877,12 @@ struct WorkspaceView: View {
             }
         }
         .contentShape(Rectangle())
+        .onChange(of: workspaces.first(where: \.isVisible)?.name, initial: true) { _, name in
+            guard !measuring, let name else { return }
+            withAnimation(reduceMotion ? nil : animation.value) {
+                scrollProxy?.scrollTo(WorkspaceScrollID(widget: widgetID, workspace: name))
+            }
+        }
         .onContinuousHover(coordinateSpace: .global) { phase in
             if workspaceStore.windowDrag.active == nil { magnifier.track(phase) }
         }

@@ -133,6 +133,8 @@ Clicking a desktop posts its **Switch to Desktop N** shortcut. Turn those shortc
 
 macOS has no public API that lists Spaces or their windows, so this source uses private window-server functions. A macOS update can break it; AeroSpace, yabai and OmniWM don't depend on them.
 
+When the workspace section is too wide for the bar, it scrolls horizontally. Switching workspaces scrolls the selected workspace into view automatically. You can still scroll the section manually.
+
 ## Workspace names
 
 Right-click a workspace and choose **Name workspace…**, or use **Settings → General → Workspaces** or the workspace widget's **Content** settings. The dialog starts with its current custom name. Save a name to show a label such as **3: Research** beside the app icons; leave it empty to clear it. Names save immediately and support Undo in Settings.
