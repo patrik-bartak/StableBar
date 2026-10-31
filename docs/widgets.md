@@ -16,7 +16,9 @@
 
 **Add widget** includes Clock & date, Active app, Apple menu, App menus, Control Center, Menu bar items, Battery, Sound, System monitor, Network, Calendar, Workspaces, Text and Spacer. Text starts with “New widget”. Apple menu, App menus, Control Center and Menu bar items need Accessibility access; Calendar asks for Calendar access; Workspaces needs AeroSpace, yabai, [OmniWM](#omniwm-workspaces) or [macOS Spaces](#macos-spaces-workspaces). Script starts with a clock command you can change through **More → Edit as JSON…**.
 
-The AeroSpace connection subscribes to workspace, monitor, window and focus events. It loads an initial snapshot, coalesces pending events and reconnects after a disconnect with exponential backoff, capped at five minutes, and at once when AeroSpace launches. Ten seconds of connection resets the backoff. The accent color marks the focused workspace; an outline marks a workspace visible on another monitor. Empty, inactive workspaces are hidden. App icons are deduplicated per workspace unless `workspace.windows` is enabled. Active-app updates come from NSWorkspace notifications.
+The AeroSpace connection uses `workspace-tree-changed` when AeroSpace supports it. Each event contains a complete workspace snapshot and nested window trees, so startup and updates need no `list-workspaces` or `list-windows` queries. StableBar traverses container children in their supplied order and shows one icon per window by default, including repeated icons for the same app. Floating, fullscreen and hidden windows follow the tiling tree, in that order. Set `workspace.windows: false` to show one icon per app, ordered by its first occurrence in the tree. This requires an AeroSpace build with the tree subscription; older versions fall back to workspace, monitor, window and focus events with snapshot queries and alphabetical app icons.
+
+The connection reconnects after a disconnect with exponential backoff, capped at five minutes, and at once when AeroSpace launches. Ten seconds of connection resets the backoff. Reconnection obtains a fresh complete snapshot, and older tree revisions on the same connection are ignored. The accent color marks the focused workspace; an outline marks a workspace visible on another monitor. Empty, inactive workspaces are hidden. Active-app updates come from NSWorkspace notifications.
 
 Set `workspace.groupDivider: true` to draw a vertical divider between adjacent numeric and alphabetic workspace names, such as `1 2 3 │ A B C`. It uses the original names, independent of custom labels, and leaves workspace order unchanged. Enable it in the workspace appearance controls, or set `workspaceDefaults.groupDivider` for all workspace widgets. It is off by default.
 
@@ -131,6 +133,31 @@ Clicking a desktop posts its **Switch to Desktop N** shortcut. Turn those shortc
 
 macOS has no public API that lists Spaces or their windows, so this source uses private window-server functions. A macOS update can break it; AeroSpace, yabai and OmniWM don't depend on them.
 
+## Workspace names
+
+Right-click a workspace and choose **Name workspace…**, or use **Settings → General → Workspaces** or the workspace widget's **Content** settings. The dialog starts with its current custom name. Save a name to show a label such as **3: Research** beside the app icons; leave it empty to clear it. Names save immediately and support Undo in Settings.
+
+Names belong to StableBar and keep the workspace's original ID for shortcuts, sorting, switching and window dragging. Each workspace manager has its own names:
+
+```json
+{
+  "workspaceNames": {
+    "aerospace": { "1": "Code", "3": "Research" },
+    "spaces": { "1": "Personal" }
+  }
+}
+```
+
+Includes and profiles merge these maps by source and workspace ID. Use `null` in an overriding layer to clear an inherited name. In **Profiles → Edit bar**, the widget's Content settings save names in that profile. Names apply to every workspace widget and display using that configuration. Themes and widget packages cannot define them. Without a custom name, the label stays as the workspace manager supplies it, including OmniWM's display names. macOS Spaces and yabai use desktop numbers as IDs, so names follow those numbers when desktops are reordered.
+
+`StableBar --name-workspace` opens the dialog for the focused workspace. To assign a keyboard shortcut in AeroSpace, add this to `[mode.main.binding]` in `aerospace.toml`:
+
+```toml
+ctrl-alt-n = 'exec-and-forget /Applications/StableBar.app/Contents/MacOS/StableBar --name-workspace'
+```
+
+Add `--config PATH` before `--name-workspace` for a different configuration. You can also [set names directly from the command line](command-line.md).
+
 ## Workspace appearance
 
 A `workspaces` widget (also accepted as `aerospace`) accepts `workspace` with:
@@ -139,7 +166,7 @@ A `workspaces` widget (also accepted as `aerospace`) accepts `workspace` with:
 - `indicatorStyle`: underline `height`, `width`, `background`, `cornerRadius`, `offsetX`, `offsetY` and `placement`. `"cell"` (default) preserves the cell-relative underline; `"belowBar"` puts its top at the visible bar background's bottom plus `offsetY`, independently of the cell height. Negative `offsetY` moves the underline upward; the **Bar → Style → Workspaces** and **Theme → Advanced → Workspace look** controls in Settings accept negative offsets too. Its `states.focused` and `states.visible` style the underline under the focused workspace and under a workspace shown on a display without focus; mode states apply after those.
 - `style`: cell typography, foreground, width, height, horizontal/side padding and spacing. Its `states` style each cell by workspace state: `focused` (the focused workspace), else `visible` (shown on a display without focus), else `empty` (no windows), so a cell has at most one. `focusedStyle`, `visibleStyle` and `emptyStyle` are shorthand for those states. The background indicator uses the state's background or border color. `hover` changes the label and app glyphs; the indicators follow the workspace state. `defaults.states` don't apply to cells.
 - `showEmpty` and `showApps`: control empty workspaces and app icons.
-- `windows`: when `true`, shows one item per window instead of one per app. Each item keeps its app icon or `appGlyphs` glyph. Clicking it focuses that window; clicking the workspace number or cell padding switches workspace. `showApps: false` hides these items too.
+- `windows`: when `true`, shows one item per window instead of one per app. This is the default for AeroSpace tree subscriptions; set it to `false` to group apps. Other sources and older AeroSpace versions default to one per app. Each window item keeps its app icon or `appGlyphs` glyph. Clicking it focuses that window; clicking the workspace number or cell padding switches workspace. `showApps: false` hides these items too.
 - `titleLength`: maximum characters of each window title when `windows` is enabled. Omit it or use `0` for icons only. For example, `"workspace": { "windows": true, "titleLength": 24 }`. The full title is available on hover. Titles refresh with workspace and window events; yabai users can also register `window_title_changed`.
 - `magnification`: magnifies the widget like the Dock, with icons zooming up to this size under the pointer, such as `1.5` for 150%. Icons push their neighbours apart, and the app under the pointer shows its name in a tooltip below the bar. Only the widget's drawing stretches, so the other widgets stay put. Omit it to turn magnification off. In **Settings → Bar**, select the workspace widget and turn on **Magnify on hover**, then set its size with **Magnification**.
 - `appStyle`: font and foreground for app glyphs, width and height in screen points for native app icons (14 × 14 by default). `focusedAppStyle` and `visibleAppStyle` are shorthand for its `states.focused` and `states.visible`.

@@ -9,6 +9,7 @@ struct Workspace: Decodable, Identifiable, Sendable, Equatable {
     let monitor: Int
     var apps: [WorkspaceApp] = []
     var windows: [WorkspaceWindow] = []
+    var hasTreeOrder = false
     /// A name the window manager shows instead of `name`, such as an OmniWM workspace's display name.
     var displayName: String?
     var id: String { name }
@@ -18,6 +19,10 @@ struct Workspace: Decodable, Identifiable, Sendable, Equatable {
         let numeric = { (name: String) in !name.isEmpty && name.allSatisfy(\.isNumber) }
         let alphabetic = { (name: String) in !name.isEmpty && name.allSatisfy(\.isLetter) }
         return (numeric(previous) && alphabetic(next)) || (alphabetic(previous) && numeric(next))
+    }
+
+    func label(alias: String?) -> String {
+        alias.map { "\(name): \($0)" } ?? label
     }
 
     enum CodingKeys: String, CodingKey {
@@ -71,8 +76,10 @@ struct WorkspaceWindow: Decodable, Identifiable, Sendable, Equatable {
 struct AeroSpaceEvent: Decodable, Sendable {
     let event: String?
     let mode: String?
+    var tree: AeroSpaceTree? = nil
+    var revision: UInt64? = nil
 
-    enum CodingKeys: String, CodingKey { case event = "_event", mode }
+    enum CodingKeys: String, CodingKey { case event = "_event", mode, tree, revision }
 }
 
 enum WorkspaceSource: String, Decodable, Sendable {
@@ -153,6 +160,8 @@ final class WorkspaceStore {
     private var task: Task<Void, Never>?
     private var process: Process?
     private var observers: [NSObjectProtocol] = []
+    private var usesTreeSubscription = false
+    private var treeRevision: UInt64?
 
     func workspaces(on monitor: Int, showEmpty: Bool) -> [Workspace] {
         workspaces.filter {
@@ -201,43 +210,64 @@ final class WorkspaceStore {
         }]
         task = Task {
             var failures = 0
+            var supportsTree = true
             while !Task.isCancelled {
                 let started = ContinuousClock.now
                 do {
                     let stream = Process()
                     let output = Pipe()
+                    let errors = Pipe()
                     stream.executableURL = URL(filePath: try executable())
                     // Without --reconnect, omniwmctl exits when OmniWM quits, so this loop reports it and retries.
                     stream.arguments = omniwm
                         ? ["subscribe", "active-workspace,focused-monitor,focus,windows-changed,layout-changed,display-changed",
                            "--no-send-initial", "--format", "ndjson"]
+                        : supportsTree ? ["subscribe", "workspace-tree-changed", "mode-changed"]
                         : ["subscribe", "focused-workspace-changed", "focused-monitor-changed", "focus-changed",
                            "window-detected", "mode-changed"]
                     stream.standardOutput = output
-                    stream.standardError = FileHandle.standardError
-                    let pending = OSAllocatedUnfairLock(initialState: Data())
+                    stream.standardError = errors
+                    let pending = OSAllocatedUnfairLock(initialState: (output: Data(), errors: Data(), closed: 0))
                     let lines = AsyncStream<Data> { continuation in
-                        output.fileHandleForReading.readabilityHandler = { handle in
-                            let data = handle.availableData
-                            if data.isEmpty { continuation.finish(); return }
-                            let parsed = pending.withLock { pending -> [Data] in
-                                pending.append(data)
-                                var parsed: [Data] = []
-                                while let newline = pending.firstIndex(of: 10) {
-                                    parsed.append(Data(pending[..<newline]))
-                                    pending.removeSubrange(...newline)
+                        for (isError, pipe) in [(false, output), (true, errors)] {
+                            pipe.fileHandleForReading.readabilityHandler = { handle in
+                                let data = handle.availableData
+                                let (parsed, finished) = pending.withLock { pending -> ([Data], Bool) in
+                                    if data.isEmpty {
+                                        handle.readabilityHandler = nil
+                                        pending.closed += 1
+                                        return ([], pending.closed == 2)
+                                    }
+                                    if isError {
+                                        pending.errors.append(data)
+                                        if pending.errors.count > 65_536 { pending.errors.removeFirst(pending.errors.count - 65_536) }
+                                        return ([], false)
+                                    }
+                                    pending.output.append(data)
+                                    var parsed: [Data] = []
+                                    while let newline = pending.output.firstIndex(of: 10) {
+                                        parsed.append(Data(pending.output[..<newline]))
+                                        pending.output.removeSubrange(...newline)
+                                    }
+                                    return (parsed, false)
                                 }
-                                return parsed
+                                for line in parsed { continuation.yield(line) }
+                                if finished { continuation.finish() }
                             }
-                            for line in parsed { continuation.yield(line) }
                         }
-                        continuation.onTermination = { _ in output.fileHandleForReading.readabilityHandler = nil }
+                        continuation.onTermination = { _ in
+                            output.fileHandleForReading.readabilityHandler = nil
+                            errors.fileHandleForReading.readabilityHandler = nil
+                        }
                     }
                     try Task.checkCancellation()
                     try stream.run()
                     process = stream
+                    treeRevision = nil
+                    usesTreeSubscription = !omniwm && supportsTree
                     defer {
                         output.fileHandleForReading.readabilityHandler = nil
+                        errors.fileHandleForReading.readabilityHandler = nil
                         if stream.isRunning { stream.terminate() }
                     }
                     requestRefresh()
@@ -247,9 +277,19 @@ final class WorkspaceStore {
                     for await line in lines {
                         try Task.checkCancellation()
                         if omniwm { failure = receiveOmniWM(line) ?? failure }
-                        else if let event = try? JSONDecoder().decode(AeroSpaceEvent.self, from: line) { receive(event) }
+                        else {
+                            do { receive(try JSONDecoder().decode(AeroSpaceEvent.self, from: line)) }
+                            catch { self.error = "Invalid AeroSpace event: \(error.localizedDescription)" }
+                        }
                     }
-                    throw CommandFailure(message: failure ?? "\(title) disconnected. Reconnecting…")
+                    try Task.checkCancellation()
+                    let message = pending.withLock { String(decoding: $0.errors, as: UTF8.self) }
+                    if !omniwm && supportsTree && message.contains("Can't parse 'workspace-tree-changed'") {
+                        supportsTree = false
+                        usesTreeSubscription = false
+                        continue
+                    }
+                    throw CommandFailure(message: failure ?? (message.isEmpty ? "\(title) disconnected. Reconnecting…" : message))
                 } catch {
                     if Task.isCancelled { return }
                     acceptMode(nil)
@@ -269,7 +309,14 @@ final class WorkspaceStore {
 
     func receive(_ event: AeroSpaceEvent) {
         guard source == .aerospace else { return }
-        if event.event == "mode-changed" {
+        if event.event == "workspace-tree-changed" {
+            guard let tree = event.tree else { error = "AeroSpace tree event is missing its snapshot."; return }
+            if let revision = event.revision, let previous = treeRevision, revision <= previous { return }
+            treeRevision = event.revision
+            usesTreeSubscription = true
+            publish(tree.snapshot)
+            connectionError = nil
+        } else if event.event == "mode-changed" {
             acceptMode(event.mode)
             connectionError = nil
             if !tracksWorkspaces { error = nil }
@@ -294,7 +341,7 @@ final class WorkspaceStore {
     }
 
     private func requestRefresh() {
-        guard tracksWorkspaces else { return }
+        guard tracksWorkspaces, !usesTreeSubscription else { return }
         refreshPending = true
         guard refreshTask == nil else { return }
         refreshTask = Task {
@@ -311,6 +358,7 @@ final class WorkspaceStore {
         let snapshot: [Workspace]
         switch source {
         case .aerospace:
+            if usesTreeSubscription { return }
             let executable = try executable()
             async let spaces = runCommand(executable, arguments: [
                 "list-workspaces", "--all", "--format",
@@ -343,6 +391,10 @@ final class WorkspaceStore {
             snapshot = try currentSpaces()
         }
         try Task.checkCancellation()
+        publish(snapshot)
+    }
+
+    private func publish(_ snapshot: [Workspace]) {
         let previousWorkspace = workspaces.first(where: \.isFocused)?.name
         if workspaces != snapshot { workspaces = snapshot }
         if previousWorkspace != workspaces.first(where: \.isFocused)?.name { onWorkspaceChange?() }
@@ -469,6 +521,8 @@ final class WorkspaceStore {
         task = nil
         if let process, process.isRunning { process.terminate() }
         process = nil
+        usesTreeSubscription = false
+        treeRevision = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         observers = []
     }

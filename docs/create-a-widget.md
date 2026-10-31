@@ -96,6 +96,8 @@ For battery, sound and system, **Settings → Bar → Content → Display** offe
 
 `overlay` uses the same blocks, aligned to the widget's bottom edge. It occupies no space and does not intercept clicks. This supports an underline, playback progress or a graph underneath the label.
 
+To repeat a script's list across the bar, use a `list` with `"orientation": "horizontal"`. Entries keep their order in `lists[source]`, and `style.spacing` sets the gap. Each entry can use `openField` to open its app or URL. An `image` block whose `source` reads an app's bundle path shows that app's icon. See [examples/horizontal-list](../examples/horizontal-list/config.json) for a working list of app icons and values. Lists without `orientation` stay vertical, including inside popups.
+
 For example, a music script can return:
 
 ```json

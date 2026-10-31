@@ -18,6 +18,7 @@ Saving from Settings, setup or the command line pins it to the version that save
 - `defaults`: styles inherited by every widget.
 - `popupDefaults`: styles inherited by every popup, over `defaults`.
 - `workspaceSource`: `aerospace` (default), `yabai`, `omniwm` (see [OmniWM workspaces](widgets.md#omniwm-workspaces)) or `spaces` (macOS Spaces, see [macOS Spaces workspaces](widgets.md#macos-spaces-workspaces)), for workspace widgets and active-display tracking.
+- `workspaceNames`: custom names keyed by workspace manager and workspace ID, for example `{"aerospace":{"3":"Research"}}`. See [Workspace names](widgets.md#workspace-names).
 - `packageSources`: [private package sources](packages.md#private-sources), each with an `id`, a `name` and an `https` index `url`.
 - `widgets`: ordered widget definitions with unique `id`, `type`, `position` and optional `style`, `icon`, `onClick` or `open`, `menu`, `popup`.
 - `position`: `left`, `notchLeft`, `center`, `notchRight` or `right`.

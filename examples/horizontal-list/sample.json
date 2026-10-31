@@ -1,0 +1,9 @@
+{
+  "text": "42  3",
+  "lists": {
+    "apps": [
+      { "app": "Mail", "bundle": "com.apple.mail", "icon": "/System/Applications/Mail.app", "badge": "42" },
+      { "app": "Calendar", "bundle": "com.apple.iCal", "icon": "/System/Applications/Calendar.app", "badge": "3" }
+    ]
+  }
+}

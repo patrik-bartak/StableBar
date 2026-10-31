@@ -8,6 +8,12 @@
   "workspaceDefaults": {
     "groupDivider": true
   },
+  "workspaceNames": {
+    "aerospace": {
+      "1": "Code",
+      "3": "Research"
+    }
+  },
   "modeAliases": {
     "tailing": "command"
   },

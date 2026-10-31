@@ -65,6 +65,7 @@ struct GeneralSettingsView: View {
                                 .groupRow()
                         }
                         connection
+                        WorkspaceNamesSettings(editor: editor)
                     }
                     .id(SettingsSearchResult.workspaces.id)
                     SettingsGroup("Access") {

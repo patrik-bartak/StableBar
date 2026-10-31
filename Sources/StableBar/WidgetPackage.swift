@@ -639,7 +639,7 @@ func validateWidgetsDocument(_ document: [String: ConfigurationValue]) throws {
 /// Command-capable legacy packages keep their existing powers, but the new shared presentation
 /// maps are owned by users/themes, never by a widget package (including its profiles).
 func validateCommandPackagePresentation(_ document: [String: ConfigurationValue]) throws {
-    for key in ["roles", "workspaceDefaults", "modeAliases"] where document[key] != nil {
+    for key in ["roles", "workspaceDefaults", "modeAliases", "workspaceNames"] where document[key] != nil {
         throw WidgetPackageError.widgetPresentationProperty(key)
     }
     for profile in try document["profiles"]?.decoded([ConfigurationProfile].self) ?? [] {
