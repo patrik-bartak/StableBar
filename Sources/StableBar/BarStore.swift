@@ -29,6 +29,7 @@ final class BarStore: NSObject {
     let registry: DataSourceRegistry
     var onConfigurationChange: (() -> Void)?
     var onCustomize: (() -> Void)?
+    var onNameWorkspace: ((String, WorkspaceSource) -> Void)?
     var onShowCrashes: (() -> Void)?
     var onCustomizeWidget: ((String) -> Void)?
     var onCustomizePackages: (() -> Void)?
@@ -906,6 +907,14 @@ final class BarStore: NSObject {
         case .customize:
             if let id = request.id { onCustomizeWidget?(id) }
             else { onCustomize?() }
+        case .nameWorkspace:
+            if let name = request.name {
+                guard let id = request.id else { throw CommandFailure(message: "Naming a workspace requires its ID.") }
+                let source = configuration?.workspaceSource ?? workspaceStore.source
+                try applyEdits([ConfigurationEdit.workspaceName(id, name: name, source: source)], persist: request.persist)
+            } else {
+                try requestWorkspaceName(request.id)
+            }
         case .reload:
             barEditing.end()
             try applyEdits([], persist: false)

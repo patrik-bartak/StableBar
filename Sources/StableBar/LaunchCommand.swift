@@ -24,6 +24,7 @@ enum LaunchCommand {
            StableBar --trigger EVENT [KEY=VALUE ...]
            StableBar --reload
            StableBar [--config PATH] --customize
+           StableBar [--config PATH] --name-workspace [ID [NAME]] [--persist]
            StableBar [--config PATH] --query [ID]
            StableBar [--config PATH] --set ID JSON [--persist]
            StableBar [--config PATH] --add JSON | --remove ID | --reorder ID... [--persist]
@@ -62,6 +63,9 @@ enum LaunchCommand {
             self = .run(url)
         case "--customize" where arguments.count == 1:
             self = .control(url, RuntimeRequest(action: .customize))
+        case "--name-workspace" where arguments.count <= 3:
+            self = .control(url, RuntimeRequest(action: .nameWorkspace, id: arguments.count >= 2 ? arguments[1] : nil,
+                                               name: arguments.count == 3 ? arguments[2] : nil, persist: persist))
         case "--query" where arguments.count <= 2:
             self = .control(url, RuntimeRequest(action: .query, id: arguments.count == 2 ? arguments[1] : nil))
         case "--set" where arguments.count == 3:
@@ -138,7 +142,8 @@ enum LaunchCommand {
             throw CommandFailure(message: Self.usage)
         }
         if persist {
-            guard case let .control(_, request) = self, request.action == .batch else {
+            guard case let .control(_, request) = self,
+                  request.action == .batch || (request.action == .nameWorkspace && request.name != nil) else {
                 throw CommandFailure(message: "--persist requires a configuration edit.")
             }
         }

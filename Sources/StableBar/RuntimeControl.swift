@@ -2,9 +2,10 @@ import Foundation
 import CryptoKit
 
 struct RuntimeRequest: Codable {
-    enum Action: String, Codable { case query, batch, reset, refresh, popup, trigger, reload, customize, uninstallPackage, report }
+    enum Action: String, Codable { case query, batch, reset, refresh, popup, trigger, reload, customize, nameWorkspace, uninstallPackage, report }
     let action: Action
     var id: String?
+    var name: String?
     var version: String?
     var edits: [ConfigurationEdit]?
     var persist = false

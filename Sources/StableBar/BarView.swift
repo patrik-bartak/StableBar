@@ -569,6 +569,8 @@ struct WidgetView: View {
                           padding: padding, configuration: widget.workspace, animation: widget.animation ?? defaultAnimation,
                           defaults: resolution.base,
                           modeAliases: store.configuration?.look(on: screenKind).modeAliases ?? [:], widgetID: widget.id,
+                          names: store.configuration?.workspaceNames[store.workspaceStore.source.rawValue] ?? [:],
+                          contextMenuStore: widget.actions?.rightClick == nil ? store : nil,
                           allowsWindowDragging: store.barEditing.allowsWidgetActions) { inside, name, anchor in
                 store.popup.hover(inside, store: store, anchor: anchor) {
                     store.popup.showTooltip(name, widget: widget, defaults: popupDefaults.inheriting(defaults), store: store, anchor: anchor)
@@ -714,6 +716,8 @@ struct WorkspaceView: View {
     var defaults = WidgetStyle()
     var modeAliases: [String: String] = [:]
     var widgetID = ""
+    var names: [String: String] = [:]
+    var contextMenuStore: BarStore?
     var allowsWindowDragging = true
     var appNameTooltip: (Bool, String, NSView) -> Void = { _, _, _ in }
     @Environment(\.measuringBarWidths) private var measuring
@@ -731,6 +735,7 @@ struct WorkspaceView: View {
         let indicator = configuration?.indicator ?? .background
         HStack(spacing: appearance.spacing) {
             ForEach(workspaces) { workspace in
+                let label = workspace.label(alias: names[workspace.name])
                 let mode = configuration?.usesModeStates == true
                     ? ModePresentation(mode: workspaceStore.mode, aliases: modeAliases) : ModePresentation()
                 let styles = configuration?.cellStyle(WorkspaceState(workspace), mode: mode) ?? WorkspaceCellStyle()
@@ -740,11 +745,11 @@ struct WorkspaceView: View {
                 let zoomedBelow = magnification.map { (glyph.height ?? 14) * ($0 - 1) } ?? 0
                 HStack(spacing: style.spacing ?? 4) {
                     Button { workspaceStore.select(workspace) } label: {
-                        Text(workspace.label)
+                        Text(label)
                     }
                     .magnified(.label, by: magnifier, upTo: magnification)
-                    .help("Switch to workspace \(workspace.label)")
-                    .accessibilityLabel("Workspace \(workspace.label)\(workspace.isFocused ? ", focused" : workspace.isVisible ? ", visible" : "")")
+                    .help("Switch to workspace \(label)")
+                    .accessibilityLabel("Workspace \(label)\(workspace.isFocused ? ", focused" : workspace.isVisible ? ", visible" : "")")
                     .accessibilityAddTraits(workspace.isFocused ? .isSelected : [])
                     if configuration?.showApps != false {
                         if configuration?.windows ?? workspace.hasTreeOrder {
@@ -782,7 +787,7 @@ struct WorkspaceView: View {
                     Button { workspaceStore.select(workspace) } label: {
                         Color.clear.contentShape(Rectangle())
                     }
-                    .accessibilityLabel("Switch to workspace \(workspace.label)")
+                    .accessibilityLabel("Switch to workspace \(label)")
                 }
                 .buttonStyle(.plain)
                 .modifier(WorkspaceWindowDrop(store: workspaceStore, workspace: workspace.name, enabled: canDragWindows))
@@ -826,6 +831,15 @@ struct WorkspaceView: View {
                         animation: animation)])
                 }
                 .onHover { hoveredWorkspace = $0 ? workspace.name : nil }
+                .contextMenu {
+                    if !measuring, allowsWindowDragging, let store = contextMenuStore {
+                        Button("Name workspace…") { try? store.requestWorkspaceName(workspace.name) }
+                        Divider()
+                        Button("Edit Widget…") { store.onCustomizeWidget?(widgetID) }
+                        Divider()
+                        BarContextMenu(store: store, display: monitor)
+                    }
+                }
                 .animation(hoverAnimation(hovered, reduceMotion: reduceMotion), value: hovered)
             }
             if let error = workspaceStore.error {
