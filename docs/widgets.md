@@ -137,7 +137,9 @@ When the workspace section is too wide for the bar, it scrolls horizontally. Swi
 
 ## Workspace names
 
-Right-click a workspace and choose **Name workspace…**, or use **Settings → General → Workspaces** or the workspace widget's **Content** settings. The dialog starts with its current custom name. Save a name to show a label such as **3: Research** beside the app icons; leave it empty to clear it. Names save immediately and support Undo in Settings.
+Right-click a workspace and choose **Name workspace…**, or use **Settings → General → Workspaces** or the workspace widget's **Content** settings. The dialog starts with its current custom name. Save a name to show a label such as **3: Research** beside the app icons; leave it empty to clear it. The dialog saves immediately to `workspace-names.json` beside the active configuration file. These saves do not use Settings Undo/Redo or the profile being edited.
+
+StableBar automatically loads this optional companion file; no `includes` entry is needed. Dialog saves only update this file, leaving the main configuration, its includes and Settings history untouched. Keep `workspace-names.json` out of version control to leave these names local while dotfile tools manage the main configuration. The names file accepts `workspaceNames` and an optional `$schema`, using the same JSON structure shown below. Creating, changing or deleting it reloads the names automatically. Configurations in the same directory share this file.
 
 Names belong to StableBar and keep the workspace's original ID for shortcuts, sorting, switching and window dragging. Each workspace manager has its own names:
 
@@ -150,7 +152,7 @@ Names belong to StableBar and keep the workspace's original ID for shortcuts, so
 }
 ```
 
-Includes and profiles merge these maps by source and workspace ID. Use `null` in an overriding layer to clear an inherited name. In **Profiles → Edit bar**, the widget's Content settings save names in that profile. Names apply to every workspace widget and display using that configuration. Themes and widget packages cannot define them. Without a custom name, the label stays as the workspace manager supplies it, including OmniWM's display names. macOS Spaces and yabai use desktop numbers as IDs, so names follow those numbers when desktops are reordered.
+Includes and profiles merge these maps by source and workspace ID. Use `null` in an overriding layer to clear an inherited name. The companion file overrides names in the main file and its includes; active profiles can override the companion file. Inline names remain as defaults and are not migrated. Dialog saves always edit the separate file; direct CLI edits retain their usual main-file and `--persist` behavior, so local names and active profiles also take precedence over those edits. Names apply to every workspace widget and display using that configuration. Themes and widget packages cannot define them. Without a custom name, the label stays as the workspace manager supplies it, including OmniWM's display names. macOS Spaces and yabai use desktop numbers as IDs, so names follow those numbers when desktops are reordered.
 
 `StableBar --name-workspace` opens the dialog for the focused workspace. To assign a keyboard shortcut in AeroSpace, add this to `[mode.main.binding]` in `aerospace.toml`:
 

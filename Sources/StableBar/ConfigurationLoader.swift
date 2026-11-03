@@ -415,6 +415,15 @@ struct ConfigurationLoader: Sendable {
         builtInWidgetIDs = []
         essentialsPopupNames = [:]
         var base = try read(url.standardizedFileURL, data: data, path: [])
+        let namesURL = url.deletingLastPathComponent().appending(path: "workspace-names.json").standardizedFileURL
+        // Watch the optional file's directory too, so creating it triggers a reload.
+        dependencies.insert(namesURL)
+        if namesURL.resolvingSymlinksInPath() != url.resolvingSymlinksInPath(),
+           FileManager.default.fileExists(atPath: namesURL.path) {
+            let names = try workspaceNamesDocument(Data(contentsOf: namesURL))
+            try base.merge(ConfigurationLayer(values: names,
+                origins: configurationOrigins(.object(names), source: ConfigurationOrigin(file: namesURL.path))))
+        }
         var theme = base.values["theme"]
         if let screen, let look = try base.values["screens"]?.decoded([String: [String: ConfigurationValue]].self)[screen.rawValue] {
             theme = look["theme"] ?? theme

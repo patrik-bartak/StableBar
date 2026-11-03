@@ -38,51 +38,231 @@ func workspaceNamesRejectInvalidMappings(mapping: String) {
     #expect(try String(contentsOf: fixture.directory.appending(path: "base.json"), encoding: .utf8) == base)
 }
 
-@Test @MainActor func workspaceNamesSaveClearUndoAndPreserveTemporaryEdits() throws {
+@Test @MainActor func workspaceNamesSaveSeparatelyAndPreserveTemporaryEdits() throws {
     let fixture = try ThemeGalleryFixture(#"{"includes":["base.json"],"widgets":[]}"#)
     defer { fixture.close() }
     let base = #"{"workspaceNames":{"aerospace":{"1":"Code"},"spaces":{"1":"Personal"}}}"#
     let baseURL = fixture.directory.appending(path: "base.json")
     try fixture.write(base, to: baseURL)
-    let store = BarStore(configurationURL: fixture.url)
+    let store = try fixture.store()
     defer { store.stop() }
-    store.reloadConfiguration()
     try store.applyEdits([ConfigurationEdit(action: .bar, properties: ["height": .number(52)])], persist: false)
+    let main = try Data(contentsOf: fixture.url)
     try store.saveWorkspaceName("1", name: "  Research 🐈  ", source: .aerospace)
     #expect(store.workspaceName("1", source: .aerospace) == "Research 🐈")
     #expect(store.workspaceName("1", source: .spaces) == "Personal")
     #expect(try fixture.document()["bar"] == nil)
+    #expect(try fixture.document()["workspaceNames"] == nil)
     #expect(store.configuration?.bar.height == 52)
     #expect(store.sessionEdits.count == 1)
+    #expect(!store.customizationHistory.canUndo)
+    #expect(try Data(contentsOf: fixture.url) == main)
     try store.saveWorkspaceName("1", name: "  ", source: .aerospace)
     #expect(store.workspaceName("1", source: .aerospace) == nil)
-    let document = try fixture.document()
-    let names = try #require(try document["workspaceNames"]?.decoded([String: [String: ConfigurationValue]].self))
-    #expect(names["aerospace"]?["1"] == .null)
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    let names = try JSONDecoder().decode([String: ConfigurationValue].self, from: Data(contentsOf: namesURL))
+    #expect(names["workspaceNames"] == .object(["aerospace": .object(["1": .null])]))
     store.reloadConfiguration()
     #expect(store.workspaceName("1", source: .aerospace) == nil)
-    try store.customizationHistory.undo()
-    #expect(store.workspaceName("1", source: .aerospace) == "Research 🐈")
-    try store.customizationHistory.redo()
-    #expect(store.workspaceName("1", source: .aerospace) == nil)
+    #expect(try Data(contentsOf: fixture.url) == main)
     #expect(try String(contentsOf: baseURL, encoding: .utf8) == base)
 }
 
-@Test @MainActor func workspaceNamesCanBeEditedInProfiles() throws {
+@Test @MainActor func workspaceNamesDialogSavesOutsideTheEditedProfile() throws {
     let fixture = try ThemeGalleryFixture(#"""
     {"workspaceNames":{"aerospace":{"1":"Personal"}},
      "profile":"work","profiles":[{"name":"work","configuration":{}}],"widgets":[]}
     """#)
     defer { fixture.close() }
-    let store = BarStore(configurationURL: fixture.url)
+    let store = try fixture.store()
     defer { store.stop() }
-    store.reloadConfiguration()
     store.customizationHistory.editingProfile = "work"
+    let original = try Data(contentsOf: fixture.url)
     try store.saveWorkspaceName("1", name: "Code", source: .aerospace)
     #expect(store.workspaceName("1", source: .aerospace) == "Code")
-    #expect(try fixture.document()["workspaceNames"] == .object(["aerospace": .object(["1": .string("Personal")])]))
-    try store.customizationHistory.undo()
-    #expect(store.workspaceName("1", source: .aerospace) == "Personal")
+    let document = try fixture.document()
+    #expect(try Data(contentsOf: fixture.url) == original)
+    #expect(document["profiles"] == .array([.object(["name": .string("work"), "configuration": .object([:])])]))
+    #expect(!store.customizationHistory.canUndo)
+}
+
+@Test @MainActor func workspaceNamesSavePreservesSettingsUndoRedoAndPendingEdits() throws {
+    let fixture = try ThemeGalleryFixture()
+    defer { fixture.close() }
+    let store = try fixture.store()
+    defer { store.stop() }
+    let history = store.customizationHistory
+    let originalHeight = try #require(store.configuration?.bar.height)
+    try history.change(ConfigurationEdit(action: .bar, properties: ["height": .number(52)]))
+    try history.flush()
+    try history.change(ConfigurationEdit(action: .bar, properties: ["height": .number(56)]))
+    try history.flush()
+    try history.undo()
+    let main = try Data(contentsOf: fixture.url)
+    try store.saveWorkspaceName("1", name: "Research", source: .aerospace)
+    #expect(try Data(contentsOf: fixture.url) == main)
+    #expect(history.canUndo)
+    #expect(history.canRedo)
+    #expect(history.notice == nil)
+    try history.redo()
+    #expect(store.configuration?.bar.height == 56)
+    try history.undo()
+    try history.undo()
+    #expect(store.configuration?.bar.height == originalHeight)
+    #expect(store.workspaceName("1", source: .aerospace) == "Research")
+
+    try history.change(ConfigurationEdit(action: .bar, properties: ["height": .number(60)]))
+    let beforePendingSave = try Data(contentsOf: fixture.url)
+    try store.saveWorkspaceName("1", name: "Code", source: .aerospace)
+    #expect(try Data(contentsOf: fixture.url) == beforePendingSave)
+    #expect(history.hasPendingChanges)
+    #expect(store.configuration?.bar.height == 60)
+    try history.undo()
+    #expect(store.configuration?.bar.height == originalHeight)
+    #expect(store.workspaceName("1", source: .aerospace) == "Code")
+}
+
+@Test func workspaceNamesCompanionLoadsAfterDefaultsAndBeforeProfiles() throws {
+    let fixture = try ThemeGalleryFixture(#"""
+    {"includes":["base.json"],"workspaceNames":{"aerospace":{"1":"Main"}},"profile":"work",
+     "profiles":[{"name":"work","configuration":{"workspaceNames":{"aerospace":{"2":"Profile","3":null}}}}],
+     "widgets":[]}
+    """#)
+    defer { fixture.close() }
+    try fixture.write(#"{"workspaceNames":{"aerospace":{"1":"Included","4":"Default"}}}"#,
+                      to: fixture.directory.appending(path: "base.json"))
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    try fixture.write(#"{"workspaceNames":{"aerospace":{"1":"Local","2":"Local","3":"Local","4":null}}}"#, to: namesURL)
+    var loader = ConfigurationLoader()
+    #expect(try loader.load(fixture.url).workspaceNames == ["aerospace": ["1": "Local", "2": "Profile"]])
+    #expect(loader.origins["workspaceNames.aerospace.1"]?.file == namesURL.path)
+}
+
+@Test @MainActor func workspaceNamesCompanionWatcherDetectsCreationChangesAndDeletion() async throws {
+    let fixture = try ThemeGalleryFixture()
+    defer { fixture.close() }
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    var loader = ConfigurationLoader()
+    _ = try loader.load(fixture.url)
+    #expect(loader.dependencies.contains(namesURL))
+    let watcher = ConfigurationWatcher()
+    defer { watcher.stop() }
+    var changed = false
+    watcher.onChange = { changed = true }
+    for name in ["Code", "Research", nil] as [String?] {
+        watcher.watch(loader.dependencies)
+        changed = false
+        if let name {
+            try writeConfiguration(Data("{\"workspaceNames\":{\"aerospace\":{\"1\":\"\(name)\"}}}".utf8), to: namesURL)
+        } else { try FileManager.default.removeItem(at: namesURL) }
+        for _ in 0..<100 {
+            if changed { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(changed)
+        #expect(try loader.load(fixture.url).workspaceNames["aerospace"]?["1"] == name)
+        #expect(loader.dependencies.contains(namesURL))
+    }
+}
+
+@Test(arguments: [#"{"workspaceNames":{"other":{"1":"Code"}}}"#, #"{"bar":{"height":52}}"#])
+func workspaceNamesCompanionRejectsInvalidDocuments(document: String) throws {
+    let fixture = try ThemeGalleryFixture()
+    defer { fixture.close() }
+    try fixture.write(document, to: fixture.directory.appending(path: "workspace-names.json"))
+    var loader = ConfigurationLoader()
+    #expect(throws: (any Error).self) { try loader.load(fixture.url) }
+}
+
+@Test @MainActor func workspaceNamesOverrideInlineValuesAndKeepOtherSavedNames() throws {
+    let fixture = try ThemeGalleryFixture(#"""
+    {"bar":{"height":42},"workspaceNames":{
+     "aerospace":{"1":"Inline","B":"Workspace B"},"spaces":{"2":"Personal"}},"widgets":[]}
+    """#)
+    defer { fixture.close() }
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    try fixture.write(#"{"workspaceNames":{"aerospace":{"1":"Old","3":"Keep"},"yabai":{"1":"Other"}}}"#, to: namesURL)
+    let store = try fixture.store()
+    defer { store.stop() }
+    let main = try Data(contentsOf: fixture.url)
+    try store.saveWorkspaceName("B", name: "New B", source: .aerospace)
+    #expect(store.configuration?.workspaceNames == [
+        "aerospace": ["1": "Old", "B": "New B", "3": "Keep"],
+        "spaces": ["2": "Personal"], "yabai": ["1": "Other"]
+    ])
+    let document = try fixture.document()
+    #expect(try Data(contentsOf: fixture.url) == main)
+    #expect(document["bar"] == .object(["height": .number(42)]))
+    #expect(document["includes"] == nil)
+    try store.saveWorkspaceName("C", name: "Workspace C", source: .aerospace)
+    #expect(try Data(contentsOf: fixture.url) == main)
+    let reloaded = try fixture.store()
+    defer { reloaded.stop() }
+    #expect(reloaded.configuration?.workspaceNames == store.configuration?.workspaceNames)
+}
+
+@Test @MainActor func workspaceNamesFileOverridesOtherIncludesAfterSaving() throws {
+    let fixture = try ThemeGalleryFixture(#"{"includes":["workspace-names.json","base.json"],"widgets":[]}"#)
+    defer { fixture.close() }
+    try fixture.write(#"{"workspaceNames":{"aerospace":{"1":"Old"}}}"#,
+                      to: fixture.directory.appending(path: "workspace-names.json"))
+    try fixture.write(#"{"workspaceNames":{"aerospace":{"1":"Included"}}}"#,
+                      to: fixture.directory.appending(path: "base.json"))
+    let store = try fixture.store()
+    defer { store.stop() }
+    try store.saveWorkspaceName("1", name: "New", source: .aerospace)
+    #expect(store.workspaceName("1", source: .aerospace) == "New")
+    #expect(try fixture.document()["includes"] == .array([.string("workspace-names.json"), .string("base.json")]))
+}
+
+@Test @MainActor func workspaceNamesRejectInvalidEditsWithoutChangingFiles() throws {
+    let fixture = try ThemeGalleryFixture()
+    defer { fixture.close() }
+    let store = try fixture.store()
+    defer { store.stop() }
+    let original = try Data(contentsOf: fixture.url)
+    #expect(throws: (any Error).self) { try store.saveWorkspaceName("", name: "Invalid", source: .aerospace) }
+    #expect(try Data(contentsOf: fixture.url) == original)
+    #expect(!FileManager.default.fileExists(atPath: fixture.directory.appending(path: "workspace-names.json").path))
+}
+
+@Test @MainActor func workspaceNamesPreserveMalformedNamesFile() throws {
+    let fixture = try ThemeGalleryFixture()
+    defer { fixture.close() }
+    let store = try fixture.store()
+    defer { store.stop() }
+    let original = try Data(contentsOf: fixture.url)
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    let invalid = Data("invalid JSON".utf8)
+    try invalid.write(to: namesURL)
+    #expect(throws: (any Error).self) { try store.saveWorkspaceName("1", name: "Code", source: .aerospace) }
+    #expect(try Data(contentsOf: namesURL) == invalid)
+    #expect(try Data(contentsOf: fixture.url) == original)
+}
+
+@Test @MainActor func workspaceNamesSaveIndependentlyOfConfigurationValidation() throws {
+    let fixture = try ThemeGalleryFixture(#"{"includes":["base.json"],"widgets":[]}"#)
+    defer { fixture.close() }
+    let baseURL = fixture.directory.appending(path: "base.json")
+    try fixture.write("{}", to: baseURL)
+    let store = try fixture.store()
+    defer { store.stop() }
+    let original = try Data(contentsOf: fixture.url)
+    try FileManager.default.removeItem(at: baseURL)
+    let namesURL = fixture.directory.appending(path: "workspace-names.json")
+    try store.saveWorkspaceName("1", name: "Code", source: .aerospace)
+    #expect(store.configurationError != nil)
+    #expect(try Data(contentsOf: fixture.url) == original)
+    let previous = Data(#"{"workspaceNames":{"aerospace":{"2":"Keep"}}}"#.utf8)
+    try previous.write(to: namesURL)
+    try store.saveWorkspaceName("1", name: "Code", source: .aerospace)
+    let document = try workspaceNamesDocument(Data(contentsOf: namesURL))
+    #expect(document["workspaceNames"] == .object(["aerospace": .object(["1": .string("Code"), "2": .string("Keep")])]))
+    #expect(try Data(contentsOf: fixture.url) == original)
+    try fixture.write("{}", to: baseURL)
+    store.reloadConfiguration()
+    #expect(store.configurationError == nil)
+    #expect(store.workspaceName("1", source: .aerospace) == "Code")
 }
 
 @Test func workspaceNamesCommandsAddressTheSelectedConfiguration() throws {

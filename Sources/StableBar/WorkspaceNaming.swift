@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+func workspaceNamesDocument(_ data: Data) throws -> [String: ConfigurationValue] {
+    let document = try JSONDecoder().decode([String: ConfigurationValue].self, from: data)
+    guard document.keys.allSatisfy({ ["$schema", "workspaceNames"].contains($0) }) else {
+        throw CommandFailure(message: "workspace-names.json can only contain workspaceNames and $schema.")
+    }
+    _ = try ConfigurationValue.object(document.merging(["widgets": .array([])]) { $1 }).decoded(Configuration.self)
+    return document
+}
+
 extension ConfigurationEdit {
     static func workspaceName(_ id: String, name: String, source: WorkspaceSource) -> ConfigurationEdit {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,8 +40,18 @@ extension BarStore {
     }
 
     func saveWorkspaceName(_ id: String, name: String, source: WorkspaceSource) throws {
-        try customizationHistory.change([ConfigurationEdit.workspaceName(id, name: name, source: source)])
-        try customizationHistory.flush()
+        let namesURL = configurationURL.deletingLastPathComponent().appending(path: "workspace-names.json")
+        guard namesURL.resolvingSymlinksInPath() != configurationURL.resolvingSymlinksInPath() else {
+            throw CommandFailure(message: "Workspace names need a configuration file separate from workspace-names.json.")
+        }
+        let previousNames = try FileManager.default.fileExists(atPath: namesURL.path) ? Data(contentsOf: namesURL) : nil
+        var names = try previousNames.map(workspaceNamesDocument) ?? [:]
+        var ids: [String] = []
+        names = try ConfigurationEdit.workspaceName(id, name: name, source: source).applying(to: names, widgetIDs: &ids)
+        let namesData = try configurationData(names, editing: previousNames ?? Data("{}".utf8), savedBy: release)
+        _ = try workspaceNamesDocument(namesData)
+        try writeConfiguration(namesData, to: namesURL)
+        reloadConfiguration()
     }
 }
 
@@ -43,7 +62,6 @@ final class WorkspaceNamingWindow {
     func show(store: BarStore, id: String, source: WorkspaceSource) {
         window?.close()
         let url = store.configurationURL
-        let profile = store.customizationHistory.editingProfile
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 190),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Name workspace \(id)"
@@ -52,8 +70,7 @@ final class WorkspaceNamingWindow {
         window.collectionBehavior = [.moveToActiveSpace]
         window.contentView = NSHostingView(rootView: WorkspaceNamingView(id: id, source: source,
             name: store.workspaceName(id, source: source) ?? "", save: { name in
-                guard store.configurationURL == url, store.configuration?.workspaceSource == source,
-                      store.customizationHistory.editingProfile == profile else {
+                guard store.configurationURL == url, store.configuration?.workspaceSource == source else {
                     throw CommandFailure(message: "The configuration changed. Open Name workspace again.")
                 }
                 try store.saveWorkspaceName(id, name: name, source: source)

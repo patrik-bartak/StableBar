@@ -49,7 +49,7 @@ private func writeConfiguration(_ json: String, to url: URL) throws {
     #expect(configuration.popups["details"]?.openOnHover == true)
     #expect(configuration.popups["details"]?.style.fontSize == 12)
     #expect(configuration.popups["details"]?.style.foreground == HexColor(0xabcdefff))
-    #expect(loader.dependencies == [root, module, theme, shared])
+    #expect(loader.dependencies == [root, module, theme, shared, directory.appending(path: "bar/workspace-names.json")])
 }
 
 @Test func contributionHistoryKeepsTemplateWidgetAndProfileOverridesInOrder() throws {
@@ -197,7 +197,7 @@ private func writeConfiguration(_ json: String, to url: URL) throws {
     let configuration = try loader.load(root, data: Data(#"{"includes":["module.json"],"bar":{"height":48}}"#.utf8))
     #expect(configuration.bar.height == 48)
     #expect(configuration.widgets.map(\.id) == ["clock"])
-    #expect(loader.dependencies == [root, module])
+    #expect(loader.dependencies == [root, module, directory.appending(path: "workspace-names.json")])
 }
 
 @Test @MainActor func dependencyWatcherDetectsAtomicSavesAndMissingDirectoryRepairs() async throws {
